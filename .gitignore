@@ -1,0 +1,47 @@
+data/*.sqlite3*
+projects/*/outputs/
+__pycache__/
+*.pyc
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Bancos e dados locais
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+data/
+
+# Segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Artefatos audiovisuais
+projects/*/outputs/
+*.mp4
+*.mov
+*.wav
+*.safetensors
+*.ckpt
+
+# Backups locais
+backup_*/
+*.backup
+
+# Logs e arquivos temporarios
+*.log
+*.tmp
+.gitignore.backup
+
+# Episodios locais
+projects/
+# Configuracoes privadas
+config/settings.json
