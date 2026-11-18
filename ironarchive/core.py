@@ -8,6 +8,7 @@ DB=BASE/'data'/'ironarchive.sqlite3'
 CONFIG=BASE/'config'/'settings.json'
 ROLES=('scout','maester','artist','editor','inspector','engineer')
 PREPARADO='prepared'
+MAX_RETRY_ATTEMPTS=3
 # Modo manual: 'done' e 'prepared' liberam a etapa seguinte; estes bloqueiam.
 BLOQUEIO_MANUAL=('waiting_approval','failed','rejected','running','awaiting_integration')
 
@@ -212,6 +213,75 @@ def repair_placeholder_jobs():
  return count
 
 def retry_integration():
- with connect() as db:
-  n=db.execute("UPDATE jobs SET status='pending',error=NULL,updated_at=? WHERE status='awaiting_integration'",(now(),)).rowcount
- return n
+    """Reintegra jobs em 'awaiting_integration' de volta para 'pending'."""
+    with connect() as db:
+        n=db.execute("UPDATE jobs SET status='pending',error=NULL,updated_at=? WHERE status='awaiting_integration'",(now(),)).rowcount
+    return n
+
+def retry_failed(job_id, confirm=False):
+    """Recoloca um job 'failed' em 'pending' para nova tentativa.
+
+    Apenas jobs em 'failed' são elegíveis. Não executa o pipeline automaticamente;
+    apenas libera o job para a próxima execução de run_one(), que respeitará a
+    ordem de predecessores.
+
+    Preserva o contador 'attempts' (não zera) e o usa para o limite de tentativas.
+    Registra evento de auditoria com status anterior, erro anterior e timestamp.
+    A transação é atômica (UPDATE ... WHERE status='failed') para impedir retries
+    duplicados em chamadas concorrentes.
+    """
+    if not confirm:
+        raise ValueError('Confirmação explícita requerida para retry')
+
+    max_attempts = settings().get('safety', {}).get('max_retry_attempts', MAX_RETRY_ATTEMPTS)
+
+    with connect() as db:
+        row = db.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+        if not row:
+            raise ValueError('Job inexistente')
+        if row['status'] != 'failed':
+            raise ValueError(f'Somente jobs falhados podem ser retryados; atual={row["status"]}')
+
+        # Limite de tentativas: contador acumulado (não zera).
+        if row['attempts'] >= max_attempts:
+            raise ValueError(
+                f'Limite de tentativas atingido ({row["attempts"]}/{max_attempts})'
+            )
+
+        # Checagem de dependências: predecessores devem estar liberados.
+        sql_cond, params = _condicao_predecessores()
+        bloqueado = db.execute(
+            f"""SELECT 1 FROM jobs prev
+                WHERE prev.episode_id=? AND prev.id<? AND {sql_cond}""",
+            (row['episode_id'], row['id'], *params)
+        ).fetchone()
+        if bloqueado:
+            raise ValueError('Dependências do episódio não liberadas para retry')
+
+        previous_status = row['status']
+        previous_error = row['error']
+
+        # UPDATE atômico: só prossegue se ainda estiver em 'failed'.
+        cur = db.execute(
+            "UPDATE jobs SET status='pending', error=NULL, updated_at=? WHERE id=? AND status='failed'",
+            (now(), job_id)
+        )
+        if cur.rowcount == 0:
+            raise ValueError('Job não está mais em falhou (alterado por outra transação)')
+
+        db.execute(
+            'INSERT INTO events(job_id,event,at) VALUES(?,?,?)',
+            (job_id,
+             f'retry: {previous_status}->pending (erro anterior: {previous_error or "—"})',
+             now())
+        )
+        db.commit()
+
+    return {
+        'id': job_id,
+        'status': 'pending',
+        'previous_status': previous_status,
+        'previous_error': previous_error,
+        'attempts': row['attempts'],
+        'max_attempts': max_attempts,
+    }

@@ -41,6 +41,8 @@
   button.primary:hover{background:var(--gold-dim);}
   button.danger{border-color:#5a3333; background:#2d1c1c; color:#e8c6c6;}
   button.danger:hover{background:#3d2626;}
+  button.retry{background:#2a3b2a; border-color:#4a6b4a; color:#b8d4b8;}
+  button.retry:hover{background:#3a5b3a; border-color:#6a8b6a;}
   button:disabled{opacity:.55; cursor:not-allowed;}
   table{width:100%; border-collapse:collapse; font-size:13px;}
   th{text-align:left; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border); font-size:11.5px; text-transform:uppercase; letter-spacing:.6px;}
@@ -199,6 +201,7 @@ async function loadQueue(){
     const tr=document.createElement('tr');
     const canApprove = j.status==='waiting_approval';
     const canPrepare = j.status==='pending';
+    const canRetry = j.status==='failed';
     tr.innerHTML=`
       <td class="muted">#${j.id}</td>
       <td><span class="role">${esc(ROLE_LABEL[j.role]||j.role)}</span></td>
@@ -210,6 +213,7 @@ async function loadQueue(){
         <button onclick="act(${j.id},'approve')" ${!canApprove?'disabled':''}>Aprovar</button>
         <button onclick="act(${j.id},'reject')" ${!canApprove?'disabled':''}>Rejeitar</button>
         <button onclick="act(${j.id},'prepare')" ${!canPrepare?'disabled':''}>Preparar</button>
+        <button onclick="retry(${j.id})" ${!canRetry?'disabled':''} class="retry">Tentar novamente</button>
       </div></td>`;
     if(j.id===$('detailJobId')?.value) tr.style.background='#24272e';
     tr.onclick=()=>{ openDetail(j.id); };
@@ -297,6 +301,19 @@ async function act(id,verb){
     toast(verb==='prepare'?'Preparado manualmente.':(verb==='approve'?'Aprovação registrada.':'Rejeição registrada.'), true);
     loadQueue(); if(detailJobId===id) openDetail(id); loadLogs();
   }catch(e){ toast('Erro: '+esc(e.message), false); }
+}
+
+async function retry(id){
+  if(!confirm('Tentar novamente este job? Ele voltará para a fila (pendente) e será executado na próxima etapa.\nIsso não executa o pipeline automaticamente.')) return;
+  try{
+    const res=await api('/api/jobs/'+id+'/retry',{
+      method:'POST',
+      body:JSON.stringify({confirm:true}),
+      headers:{'Content-Type':'application/json'}
+    });
+    toast('Retry registrado: job voltou para pendente.', true);
+    loadQueue(); if(detailJobId===id) openDetail(id); loadLogs();
+  }catch(e){ toast('Erro no retry: '+esc(e.message), false); }
 }
 
 async function runStep(){

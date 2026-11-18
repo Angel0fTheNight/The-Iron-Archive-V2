@@ -64,6 +64,18 @@ def _segments(path):
     return [s for s in path.strip("/").split("/") if s]
 
 
+def _read_body(handler):
+    """Lê o corpo JSON de uma requisição POST. Retorna dict (ou {} se vazio)."""
+    length = int(handler.headers.get("Content-Length", 0) or 0)
+    if length == 0:
+        return {}
+    raw = handler.rfile.read(length)
+    try:
+        return json.loads(raw.decode("utf-8")) if raw else {}
+    except json.JSONDecodeError:
+        return {}
+
+
 class CommandHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return  # sem log de acesso no console do servidor
@@ -180,12 +192,23 @@ class CommandHandler(BaseHTTPRequestHandler):
             elif segments[:2] == ["api", "jobs"] and len(segments) == 4:
                 job_id = self._job_id(segments)
                 verb = segments[3]
+                body = _read_body(self)
                 if verb == "approve":
                     decided = decide(job_id, approve=True)
                 elif verb == "reject":
                     decided = decide(job_id, approve=False)
                 elif verb == "prepare":
                     decided = decide(job_id, prepare=True)
+                elif verb == "retry":
+                    confirmed = bool(body.get("confirm"))
+                    try:
+                        decided = core.retry_failed(job_id, confirm=confirmed)
+                    except ValueError as exc:
+                        _json(self, 409, {"error": str(exc)})
+                        return None
+                    job = core.get_job(job_id)
+                    decided["status"] = job["status"]
+                    return decided
                 else:
                     _json(self, 404, {"error": "endpoint nao encontrado"})
                     return
