@@ -1,10 +1,11 @@
 import argparse,json,sys
-from ironarchive.core import create_episode,jobs,change_approval,run_one,reset_stale,doctor,repair_placeholder_jobs,retry_integration,mark_prepared
+from ironarchive.core import create_episode,jobs,change_approval,run_one,reset_stale,doctor,repair_placeholder_jobs,retry_integration,mark_prepared,retry_exceptional
 
 def main(argv=None):
  p=argparse.ArgumentParser(description='THE IRON ARCHIVE 2.0')
  sub=p.add_subparsers(dest='cmd',required=True)
  sub.add_parser('doctor');sub.add_parser('status');sub.add_parser('reset-stale');sub.add_parser('repair-placeholders');sub.add_parser('retry-integration')
+ re=sub.add_parser('retry-exceptional');re.add_argument('--job',type=int,required=True);re.add_argument('--confirm',action='store_true');re.add_argument('--justificativa',type=str,default='');re.add_argument('--autorizador',type=str,default='')
  n=sub.add_parser('new');n.add_argument('--title',required=True);n.add_argument('--goal',required=True)
  r=sub.add_parser('run');r.add_argument('--steps',type=int,default=1)
  pr=sub.add_parser('prepare');pr.add_argument('--job',type=int,required=True)
@@ -24,6 +25,7 @@ def main(argv=None):
   elif args.cmd=='reset-stale':print('Jobs recuperados:',reset_stale())
   elif args.cmd=='repair-placeholders':print('Placeholders reclassificados:',repair_placeholder_jobs())
   elif args.cmd=='retry-integration':print('Jobs liberados para nova tentativa:',retry_integration())
+  elif args.cmd=='retry-exceptional':print('Recuperação excepcional:',retry_exceptional(args.job,confirm=args.confirm,justificativa=args.justificativa,autorizador=args.autorizador))
   elif args.cmd=='prepare':mark_prepared(args.job);print('Job preparado (briefing manual).')
   else:change_approval(args.job,args.cmd=='approve');print('Decisão registrada.')
  except Exception as e:print('ERRO:',e,file=sys.stderr);return 1

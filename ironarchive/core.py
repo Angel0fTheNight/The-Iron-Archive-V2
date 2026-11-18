@@ -324,3 +324,100 @@ def retry_failed(job_id, confirm=False):
         'attempts': row['attempts'],
         'max_attempts': max_attempts,
     }
+
+
+def retry_exceptional(job_id, confirm=False, justificativa='', autorizador=''):
+    """Recuperação excepcional e auditável para o job #1 (Scout, episódio 1).
+
+    Caminho separado de retry_failed(): usado somente quando o job esgotou o
+    limite normal de tentativas (attempts >= max_attempts). Não modifica
+    MAX_RETRY_ATTEMPTS nem o retry normal.
+
+    Requisitos:
+    - confirm=True obrigatório.
+    - justificativa não vazia obrigatória.
+    - Escopo restrito: apenas job id=1, episode_id=1, role='scout'.
+    - 'autorizador' é registrado na auditoria como informação, NÃO como prova
+      de identidade (não há autenticação de cliente aqui).
+    - attempts é PRESERVADO (não zera). A próxima execução via run_one()
+      incrementa o contador (3 -> 4) e fica identificada no evento de auditoria
+      como tentativa excepcional.
+    - Atualização de status e registro de auditoria na MESMA transação SQLite;
+      falha deixa nenhuma alteração parcial.
+    - UPDATE ... WHERE status='failed' impede recuperações simultâneas/repetidas
+      sem novo estado de falha (após a primeira, o job fica 'pending').
+    - Não executa o pipeline automaticamente; apenas libera para pending.
+    """
+    if not confirm:
+        raise ValueError('Confirmação explícita requerida para recuperação excepcional')
+    if not justificativa or not str(justificativa).strip():
+        raise ValueError('Justificativa não vazia é requerida para recuperação excepcional')
+
+    max_attempts = settings().get('safety', {}).get('max_retry_attempts', MAX_RETRY_ATTEMPTS)
+
+    with connect() as db:
+        row = db.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+        if not row:
+            raise ValueError('Job inexistente')
+        # Escopo restrito: apenas o job #1 (Scout, episódio 1).
+        if row['id'] != 1 or row['episode_id'] != 1 or row['role'] != 'scout':
+            raise ValueError(
+                'Recuperação excepcional restrita ao job #1 (Scout, episódio 1); '
+                'atual=id=' + str(row['id']) + ', episode_id=' + str(row['episode_id']) + ', role=' + row['role']
+            )
+        if row['status'] != 'failed':
+            raise ValueError('Somente jobs falhados podem ser recuperados excepcionalmente; atual=' + row['status'])
+
+        # Só se aplica quando o limite normal já foi esgotado.
+        if row['attempts'] < max_attempts:
+            raise ValueError(
+                'Job ainda não esgotou o limite normal de tentativas '
+                '(' + str(row['attempts']) + '/' + str(max_attempts) + '); use retry_failed()'
+            )
+
+        # Checagem de dependências: predecessores devem estar liberados.
+        sql_cond, params = _condicao_predecessores()
+        bloqueado = db.execute(
+            'SELECT 1 FROM jobs prev '
+            'WHERE prev.episode_id=? AND prev.id<? AND ' + sql_cond,
+            (row['episode_id'], row['id'], *params)
+        ).fetchone()
+        if bloqueado:
+            raise ValueError('Dependências do episódio não liberadas para recuperação excepcional')
+
+        previous_status = row['status']
+        previous_error = row['error']
+        previous_attempts = row['attempts']
+
+        # UPDATE atômico: só prossegue se ainda estiver em 'failed'. Impede
+        # recuperações simultâneas e repetidas sem novo estado de falha.
+        cur = db.execute(
+            "UPDATE jobs SET status='pending', error=NULL, updated_at=? WHERE id=? AND status='failed'",
+            (now(), job_id)
+        )
+        if cur.rowcount == 0:
+            raise ValueError('Job não está mais em falhou (alterado por outra transação)')
+
+        justificativa = str(justificativa).strip()
+        autorizador_txt = str(autorizador).strip() or '—'
+        db.execute(
+            'INSERT INTO events(job_id,event,at) VALUES(?,?,?)',
+            (job_id,
+             'retry_exceptional: ' + previous_status + '->pending '
+             '(attempts=' + str(previous_attempts) + '/' + str(max_attempts) + ', '
+             'justificativa=' + justificativa + ', autorizador=' + autorizador_txt + ')',
+             now())
+        )
+        db.commit()
+
+    return {
+        'id': job_id,
+        'status': 'pending',
+        'previous_status': previous_status,
+        'previous_error': previous_error,
+        'attempts': previous_attempts,  # preservado; run_one() incrementa na próxima execução
+        'max_attempts': max_attempts,
+        'exceptional': True,
+        'justificativa': justificativa,
+        'autorizador': autorizador_txt,
+    }
