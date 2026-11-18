@@ -56,6 +56,29 @@ def create_episode(title,goal):
 def jobs():
  with connect() as db:return [dict(x) for x in db.execute('SELECT j.*,e.slug,e.title FROM jobs j JOIN episodes e ON e.id=j.episode_id ORDER BY j.id')]
 
+def get_job(job_id):
+    with connect() as db:
+        row=db.execute('SELECT j.*,e.slug,e.title,e.goal FROM jobs j JOIN episodes e ON e.id=j.episode_id WHERE j.id=?',(job_id,)).fetchone()
+        return dict(row) if row else None
+
+def get_events(job_id,limit=200):
+    with connect() as db:
+        return [dict(x) for x in db.execute('SELECT * FROM events WHERE job_id=? ORDER BY id DESC LIMIT ?',(job_id,limit))]
+
+def output_path(job):
+    return episode_dir(job['slug'])/'outputs'/f"{job['id']:04d}_{job['role']}.md"
+
+def read_output(job_id):
+    job=get_job(job_id)
+    if not job:return None
+    f=output_path(job)
+    if not f.exists():return None
+    return f.read_text(encoding='utf-8')
+
+def episodes():
+    with connect() as db:
+        return [dict(x) for x in db.execute('SELECT id,slug,title,created_at FROM episodes ORDER BY id')]
+
 def change_approval(job_id,approve):
  with connect() as db:
   row=db.execute('SELECT status FROM jobs WHERE id=?',(job_id,)).fetchone()

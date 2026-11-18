@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Command Center &mdash; The Iron Archive 2.0</title>
+<style>
+  :root{
+    --bg:#0a0b0e; --panel:#121418; --panel-2:#191c23; --border:#2c303a; --border-hover:#3d414b;
+    --ink:#e8e6e0; --muted:#948c7f; --line:#6e6658;
+    --gold:#c9a227; --gold-dim:#8f731c; --gold-soft:#4a3b14;
+    --bronze:#8f6b4f; --bronze-dim:#6e5239; --bronze-soft:#3b2f24;
+    --done:#5e7a5e; --fail:#8a4a4a; --rej:#7a6e4e; --wait:#c9a227; --prep:#a68f2e; --run:#6a7f8c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;}
+  header{
+    background:#0e0f12; border-bottom:1px solid var(--border); padding:16px 24px;
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .sigil{width:34px;height:34px;border:1px solid var(--gold); border-radius:6px; display:grid; place-items:center; font-weight:700; color:var(--gold); font-size:14px; letter-spacing:2px;}
+  h1{font-family:Georgia,'Times New Roman',Times,serif; font-size:20px; margin:0; color:var(--ink); letter-spacing:0.4px;}
+  .sub{color:var(--muted); font-size:12.5px; margin-top:2px;}
+  .local{margin-left:auto; font-size:12px; color:var(--bronze); border:1px solid var(--bronze-soft); padding:2px 10px; border-radius:10px; background:var(--bronze-soft);}
+  nav{display:flex; gap:8px; padding:10px 24px; border-bottom:1px solid var(--border); overflow-x:auto; flex-wrap:wrap;}
+  nav a{color:var(--muted); text-decoration:none; padding:8px 12px; border:1px solid transparent; border-radius:10px; font-size:13px; white-space:nowrap;}
+  nav a:hover, nav a.active{background:var(--panel-2); border-color:var(--border-hover); color:var(--ink);}
+  nav a.active::after{content:''; display:inline-block; width:6px; height:6px; background:var(--gold); border-radius:50%; margin-left:6px; vertical-align:middle;}
+  main{max-width:1200px; margin:0 auto; padding:20px 24px 60px;}
+  h2{font-family:Georgia,'Times New Roman',Times,serif; font-size:17px; margin:0 0 12px; color:var(--gold); border-bottom:1px solid var(--border); padding-bottom:6px;}
+  .grid{display:grid; grid-template-columns:260px 1fr; gap:20px;}
+  @media (max-width:900px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px;}
+  .panel{background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:16px;}
+  .row{display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
+  label{font-size:12px; color:var(--muted); white-space:nowrap;}
+  button{font-family:inherit; font-size:13px; padding:7px 14px; border-radius:8px; border:1px solid var(--border); background:var(--panel-2); color:var(--ink); cursor:pointer;}
+  button:hover{border-color:var(--border-hover);}
+  button.primary{background:var(--gold-soft); border-color:var(--gold-dim); color:#f5efe1;}
+  button.primary:hover{background:var(--gold-dim);}
+  button.danger{border-color:#5a3333; background:#2d1c1c; color:#e8c6c6;}
+  button.danger:hover{background:#3d2626;}
+  button:disabled{opacity:.55; cursor:not-allowed;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border); font-size:11.5px; text-transform:uppercase; letter-spacing:.6px;}
+  td{padding:9px 10px; border-bottom:1px solid #1f2228; vertical-align:middle;}
+  tr:hover td{background:#16191f;}
+  .badge{display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px; border:1px solid; text-transform:uppercase; letter-spacing:.4px;}
+  .st-pending{border-color:var(--bronze-dim); color:#c9b18a; background:#231d16;}
+  .st-waiting_approval{border-color:var(--gold-dim); color:var(--gold); background:var(--gold-soft);}
+  .st-prepared{border-color:var(--prep); color:#e3d89c; background:#2b2613;}
+  .st-running{border-color:var(--run); color:#bcd0de; background:#1d242a;}
+  .st-done{border-color:var(--done); color:#b8d4b8; background:#1c261e;}
+  .st-failed{border-color:var(--fail); color:#e4b8b8; background:#2d1e1e;}
+  .st-rejected{border-color:var(--rej); color:#c9c0a6; background:#2b291f;}
+  .st-awaiting_integration{border-color:var(--gold-dim); color:#d9b96e; background:#282113;}
+  .role{font-weight:700; color:var(--gold); font-size:13px;}
+  .muted{color:var(--muted); font-size:12.5px;}
+  .actions{display:flex; gap:6px; flex-wrap:wrap;}
+  .actions button{font-size:12px; padding:5px 11px;}
+  .toast{position:fixed; top:14px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:10px; border:1px solid var(--border); background:var(--panel-2); color:var(--ink); font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,.45); z-index:50; display:none;}
+  .toast.ok{border-color:var(--done); color:#b8d4b8;}
+  .toast.err{border-color:var(--fail); color:#e8c6c6;}
+  .empty{color:var(--muted); font-style:italic; padding:16px 0;}
+  pre.out{background:#0c0d10; border:1px solid var(--border); border-radius:8px; padding:14px; overflow:auto; font-size:12.5px; white-space:pre-wrap; font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}
+  .out h2,.out h3,.out h4{font-family:Georgia,'Times New Roman',Times,serif; color:var(--gold); margin:14px 0 6px; font-size:14px; border-bottom:1px solid #24272e; padding-bottom:3px;}
+  .out b{color:#f0e3b3;}
+  .out p{margin:6px 0; color:#d8d4c8;}
+  .out a{color:#9ec7e6;}
+  .events td{font-size:12px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}
+  .events .event{color:var(--muted);}
+  .doctor dt{color:var(--muted); font-size:12.5px; margin-top:8px;}
+  .doctor dd{margin:0 0 6px 16px; font-size:12.5px; color:var(--ink); font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}
+  .doctor .ok{color:var(--done);} .doctor .bad{color:var(--fail);} .doctor .nil{color:var(--rej);}
+  .small{font-size:12.5px; color:var(--muted);}
+  footer{color:var(--line); font-size:11.5px; padding:14px 24px; border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+<header>
+  <div class="sigil">TIA</div>
+  <div>
+    <h1>Command Center &mdash; The Iron Archive 2.0</h1>
+    <div class="sub">Fila SQLite, papéis Scout &middot; Maester &middot; Artist &middot; Editor &middot; Inspector &middot; Engineer &middot; apenas 127.0.0.1</div>
+  </div>
+  <div class="local" id="addr">127.0.0.1:&lt;porta&gt;</div>
+</header>
+<nav>
+  <a href="#episodes" class="active">Episódios</a>
+  <a href="#queue">Fila de produções</a>
+  <a href="#detail">Detalhe da produ&ccedil;&atilde;o</a>
+  <a href="#logs">Logs e eventos</a>
+  <a href="#doctor">Diagnóstico</a>
+</nav>
+<main>
+  <section id="episodes" class="card">
+    <h2>Episódios</h2>
+    <div class="row"><button class="primary" id="btnRefresh">Atualizar</button></div>
+    <div id="episodesList" class="empty">Carregando episódios...</div>
+  </section>
+
+  <section id="queue" class="card">
+    <h2>Fila de produções</h2>
+    <div class="row">
+      <label>Episódio:</label>
+      <select id="selEpisode" style="font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--ink);"></select>
+      <button class="primary" id="btnRun">Executar próxima etapa</button>
+      <span class="muted" id="runHint">Só avança jobs <b>pending</b> cujos predecessores estiverem liberados.</span>
+    </div>
+    <div id="queueTableWrap">
+      <table id="queueTable">
+        <thead><tr><th>#</th><th>Papel</th><th>Tipo</th><th>Estado</th><th>Tentativas</th><th>Atualizado</th><th>Ações</th></tr></thead>
+        <tbody id="queueBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="detail" class="card">
+    <h2>Detalhe da produ&ccedil;&atilde;o</h2>
+    <div id="detailMeta"></div>
+    <div class="row" style="margin-top:12px;">
+      <button id="btnApprove" class="primary">Aprovar job</button>
+      <button id="btnReject" class="danger">Rejeitar job</button>
+      <button id="btnPrepare" class="primary">Preparar manualmente (briefing)</button>
+      <span class="muted" id="actHint">Aprovar/Rejeitar s&oacute; valem em <i>aguardando aprovação</i>; Preparar s&oacute; em <i>pendente</i>.</span>
+    </div>
+    <div id="detailOutput"></div>
+    <div id="detailEvents" style="margin-top:14px;"></div>
+  </section>
+
+  <section id="logs" class="card">
+    <h2>Logs e eventos</h2>
+    <table class="events">
+      <thead><tr><th>Quando</th><th>Job</th><th>Papel</th><th>Evento</th></tr></thead>
+      <tbody id="logsBody"></tbody>
+    </table>
+  </section>
+
+  <section id="doctor" class="card">
+    <h2>Diagnóstico (doctor)</h2>
+    <div id="doctorBody" class="empty">Executando diagnóstico...</div>
+  </section>
+</main>
+<footer>The Iron Archive 2.0 &mdash; núcleo funcional, local-first. Sem ativos externos, sem tokens no front-end, sem execu&ccedil;&atilde;o de pipeline sem a fila real.</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+const BASE = window.location.origin;
+document.getElementById('addr').textContent = window.location.hostname + ':' + window.location.port;
+
+const STATUS_LABEL = {
+  pending:'Pendente', waiting_approval:'Aguardando aprovação', prepared:'Preparado (manual)',
+  running:'Executando', done:'Concluído', failed:'Falhou', rejected:'Rejeitado',
+  awaiting_integration:'Aguardando integração'
+};
+const ROLE_ORDER = ['scout','maester','artist','editor','inspector','engineer'];
+const ROLE_LABEL = {scout:'Scout', maester:'Maester', artist:'Artist', editor:'Editor', inspector:'Inspector', engineer:'Engineer'};
+
+function $ (id){return document.getElementById(id);}
+function esc(t){return String(t).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));}
+function toast(msg,ok){const t=$('toast'); t.textContent=msg; t.className='toast '+(ok?'ok':'err'); t.style.display='block'; setTimeout(()=>t.style.display='none',3000);}
+
+async function api(path,opts={}){
+  const res=await fetch(BASE+path, {headers:{'Accept':'application/json',...opts.headers},...opts});
+  const ct=res.headers.get('content-type')||'';
+  const text=await res.text();
+  let data=text;
+  if(ct.includes('application/json')){try{data=JSON.parse(text);}catch(e){data=text;}}
+  if(!res.ok) throw new Error(data.error||data||`HTTP ${res.status}`);
+  return data;
+}
+
+function badgeClass(s){return 'st-'+s;}
+function fmtDate(iso){if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
+
+async function loadEpisodes(){
+  const {episodes}=await api('/api/episodes');
+  const list=$('episodesList'); const sel=$('selEpisode');
+  list.innerHTML=''; sel.innerHTML='<option value="">Todos os episódios</option>';
+  if(!episodes.length){list.innerHTML='<div class="empty">Nenhum episódio ainda. Crie com: python main.py new --titulo ...</div>';}
+  for(const ep of episodes){
+    const item=document.createElement('div');
+    item.className='row'; item.style.border='1px solid var(--border)'; item.style.borderRadius='8px'; item.style.padding='10px 12px'; item.style.cursor='pointer';
+    item.innerHTML=`<div style="flex:1"><div style="font-weight:700;color:var(--gold);font-size:13px;">${esc(ep.title)}</div><div class="muted" style="font-size:12px;">${esc(ep.slug)} · ${esc(ep.goal.slice(0,90))}${ep.goal.length>90?'…':''}</div><div class="muted" style="font-size:11.5px;">Criado ${fmtDate(ep.created_at)}</div></div><div class="muted" style="font-size:11px;">#${ep.id}</div>`;
+    item.onclick=()=>{sel.value=ep.id; loadQueue();};
+    list.appendChild(item);
+    const o=document.createElement('option'); o.value=ep.id; o.textContent=esc(ep.title)+' (#'+ep.id+')'; sel.appendChild(o);
+  }
+}
+
+async function loadQueue(){
+  const params = new URLSearchParams(); const ep=$('selEpisode').value; if(ep) params.set('episode',ep);
+  const {jobs}=await api('/api/jobs?'+params.toString());
+  const body=$('queueBody'); body.innerHTML='';
+  const ordered = [...jobs].sort((a,b)=>ROLE_ORDER.indexOf(a.role)-ROLE_ORDER.indexOf(b.role)||a.id-b.id);
+  if(!ordered.length){body.innerHTML='<tr><td colspan="7" class="empty">Nenhum job neste episódio.</td></tr>'; return;}
+  for(const j of ordered){
+    const tr=document.createElement('tr');
+    const canApprove = j.status==='waiting_approval';
+    const canPrepare = j.status==='pending';
+    tr.innerHTML=`
+      <td class="muted">#${j.id}</td>
+      <td><span class="role">${esc(ROLE_LABEL[j.role]||j.role)}</span></td>
+      <td class="muted">${esc(j.kind||'—')}</td>
+      <td><span class="badge ${badgeClass(j.status)}">${esc(STATUS_LABEL[j.status]||j.status)}</span></td>
+      <td class="muted">${j.attempts}</td>
+      <td class="muted">${fmtDate(j.updated_at||j.created_at)}</td>
+      <td><div class="actions">
+        <button onclick="act(${j.id},'approve')" ${!canApprove?'disabled':''}>Aprovar</button>
+        <button onclick="act(${j.id},'reject')" ${!canApprove?'disabled':''}>Rejeitar</button>
+        <button onclick="act(${j.id},'prepare')" ${!canPrepare?'disabled':''}>Preparar</button>
+      </div></td>`;
+    if(j.id===$('detailJobId')?.value) tr.style.background='#24272e';
+    tr.onclick=()=>{ openDetail(j.id); };
+    body.appendChild(tr);
+  }
+}
+
+async function loadLogs(){
+  const {events}=await api('/api/logs?limit=80');
+  const body=$('logsBody'); body.innerHTML='';
+  if(!events.length){body.innerHTML='<tr><td colspan="4" class="empty">Sem eventos ainda.</td></tr>'; return;}
+  for(const e of events){
+    body.innerHTML+=`<tr><td class="muted">${fmtDate(e.at)}</td><td class="muted">#${e.job_id}</td><td class="muted">${esc(e.role||'—')}</td><td class="event">${esc(e.event)}</td></tr>`;
+  }
+}
+
+async function loadDoctor(){
+  try{
+    const d=await api('/api/doctor');
+    const el=$('doctorBody'); el.innerHTML='';
+    const show=(k,v)=>{const dt=document.createElement('dt'); dt.textContent=k; const dd=document.createElement('dd');
+      if(v===null||v===undefined){dd.textContent='—'; dd.className='nil';}
+      else if(typeof v==='object'){dd.textContent=JSON.stringify(v); dd.className='bad';}
+      else if(k==='python'){dd.textContent=v; dd.className='ok';}
+      else if(k==='reachable'){dd.textContent=v?'Sim':'Não'; dd.className=v?'ok':'bad';}
+      else if(k==='exists'){dd.textContent=v?'Sim':'Não'; dd.className=v?'ok':'bad';}
+      else {dd.textContent=v; dd.className='ok';}
+      el.appendChild(dt); el.appendChild(dd);};
+    show('Python', d.python);
+    show('Modo de execução', d.hermes_mode||d.execution_mode||'—');
+    for(const [k,v] of Object.entries(d.paths||{})) show('Caminho: '+k, (v&&v.exists?'Sim':'Não')+' — '+(v&&v.path));
+    for(const [k,v] of Object.entries(d.tools||{})) show('Ferramenta: '+k, v?v:'Não encontrada');
+    if(d.comfyui){show('ComfyUI /system_stats', d.comfyui.reachable?'Alcançável ('+d.comfyui.status+')':'Indisponível ('+(d.comfyui.error||'—')+')');}
+  }catch(e){$('doctorBody').innerHTML='<div class="muted">Não foi possível executar o diagnóstico: '+esc(e.message)+'</div>';}
+}
+
+let detailJobId=null;
+async function openDetail(id){
+  detailJobId=id; $('detailJobId')||(document.body.insertAdjacentHTML('beforeend','<input id="detailJobId" type="hidden">'));
+  $('detailJobId').value=id;
+  const {job,events,output_available}=await api('/api/jobs/'+id);
+  $('detailMeta').innerHTML=`
+    <div style="display:flex;gap:16;flex-wrap:wrap;margin-bottom:10px;">
+      <div><div class="muted" style="font-size:11px;">Episódio</div><div style="font-weight:700;color:var(--gold);">${esc(job.title)}</div></div>
+      <div><div class="muted" style="font-size:11px;">Slug</div><div class="muted" style="font-size:12px;">${esc(job.slug)}</div></div>
+      <div><div class="muted" style="font-size:11px;">Papel</div><div><span class="role">${esc(ROLE_LABEL[job.role]||job.role)}</span> <span class="badge ${badgeClass(job.status)}">${esc(STATUS_LABEL[job.status]||job.status)}</span></div></div>
+      <div><div class="muted" style="font-size:11px;">Tipo</div><div class="muted">${esc(job.kind||'—')}</div></div>
+      <div><div class="muted" style="font-size:11px;">Tentativas</div><div class="muted">${job.attempts}</div></div>
+      <div><div class="muted" style="font-size:11px;">Saída</div><div class="muted">${output_available?'Disponível':'Não gerada ainda'}</div></div>
+    </div>
+    <div class="muted" style="font-size:12.5px;">${esc(job.goal||'—')}</div>
+  `;
+  $('detailEvents').innerHTML='';
+  if(events.length){
+    const wrap=document.createElement('div'); wrap.className='panel'; wrap.style.fontSize='12.5px';
+    wrap.innerHTML='<div class="muted" style="font-size:11px;margin-bottom:6px;">Eventos do job</div>'+events.map(e=>`<div style="border-bottom:1px solid #1f2228;padding:6px 0;"><div class="muted" style="font-size:11px;">${fmtDate(e.at)}</div><div>${esc(e.event)}</div></div>`).join('');
+    $('detailEvents').appendChild(wrap);
+  }
+  if(output_available){
+    const txt=await api('/api/jobs/'+id+'/output',{headers:{Accept:'text/markdown'}});
+    $('detailOutput').innerHTML='<div style="margin:10px 0 0;font-size:11px;color:var(--muted);">Resultado (arquivo de saída)</div><pre class="out">'+renderMarkdown(esc(txt))+'</pre>';
+  } else {
+    $('detailOutput').innerHTML='<div class="empty">Sem arquivo de saída para este job ainda.</div>';
+  }
+  loadQueue();
+}
+
+function renderMarkdown(t){
+  t=t.replace(/\n{3,}/g,'\n\n');
+  let html='';
+  for(const para of t.split(/\n\n+/)){
+    let p=para.trim();
+    if(!p) continue;
+    if(p.match(/^#{1,4}\s/)){ p=p.replace(/^#{1,4}\s/,''); html+=`<h3>${esc(p)}</h3>`; continue;}
+    p=esc(p).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+    p=p.replace(/\b(https?:\/\/[^\s<)>]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+    html+=`<p>${p}</p>`;
+  }
+  return html||'<p class="muted">(sem conteúdo)</p>';
+}
+
+async function act(id,verb){
+  try{
+    const res=await api('/api/jobs/'+id+'/'+verb,{method:'POST'});
+    toast(verb==='prepare'?'Preparado manualmente.':(verb==='approve'?'Aprovação registrada.':'Rejeição registrada.'), true);
+    loadQueue(); if(detailJobId===id) openDetail(id); loadLogs();
+  }catch(e){ toast('Erro: '+esc(e.message), false); }
+}
+
+async function runStep(){
+  try{
+    const res=await api('/api/run',{method:'POST'});
+    if(res.status==='none_ready'){ toast('Nenhuma etapa pronta (verifique aprovações ou etapas anteriores).', false); }
+    else { toast('Etapa executada: '+res.role+' → '+res.status+ (res.output?' ('+res.output+')':''), true); }
+    loadQueue(); loadLogs(); if(detailJobId) openDetail(detailJobId);
+  }catch(e){ toast('Erro ao executar: '+esc(e.message), false); }
+}
+
+$('btnRefresh').onclick=async ()=>{ $('btnRefresh').disabled=true; await loadEpisodes(); await loadQueue(); await loadLogs(); await loadDoctor(); $('btnRefresh').disabled=false;};
+$('btnRun').onclick=runStep;
+$('selEpisode').onchange=loadQueue;
+$('btnApprove').onclick=()=>detailJobId&&act(detailJobId,'approve');
+$('btnReject').onclick=()=>detailJobId&&act(detailJobId,'reject');
+$('btnPrepare').onclick=()=>detailJobId&&act(detailJobId,'prepare');
+
+(async ()=>{
+  await loadEpisodes(); await loadQueue(); await loadLogs(); await loadDoctor();
+  setTimeout(()=>{loadQueue(); loadLogs();}, 20000);
+})();
+</script>
+</body>
+</html>

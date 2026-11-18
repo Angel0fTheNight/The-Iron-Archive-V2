@@ -12,6 +12,7 @@ echo 3 - Status da fila
 echo 4 - Executar proxima etapa
 echo 5 - Aprovar job
  echo 6 - Recuperar jobs interrompidos
+echo 7 - Centro de Comando
 echo 0 - Sair
 set /p "opt=Escolha: "
 if "%opt%"=="1" %PY% main.py doctor
@@ -27,5 +28,6 @@ if "%opt%"=="5" (
  call %PY% main.py approve --job !job!
 )
 if "%opt%"=="6" %PY% main.py reset-stale
+if "%opt%"=="7" %PY% ironarchive\command_center.py
 if "%opt%"=="0" exit /b 0
 goto menu

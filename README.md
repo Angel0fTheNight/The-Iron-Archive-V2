@@ -46,4 +46,12 @@ Não salve tokens no `settings.json`; use variáveis de ambiente para futuras in
 - `docs/`: arquitetura, integrações, migração e limitações
 - `tests/`: testes automatizados
 
+## Centro de Comando (interface web local)
+
+`python ironarchive/command_center.py` inicia um servidor web leve (apenas a biblioteca padrao do Python) que escuta exclusivamente em `127.0.0.1` (porta `8765`; mude com a variavel de ambiente `CC_PORT`). Nao instala dependencias, nao expoe servicos na rede e nao usa APIs pagas nem tokens no front-end.
+
+Exibe o estado real da fila SQLite: episodios, jobs dos seis papeis (Scout, Maester, Artist, Editor, Inspector, Engineer) com estados e tentativas, arquivos de saida em `projects/<slug>/outputs` e o log de eventos. Permite apenas acoes compatíveis com o modelo de estados: aprovar/rejeitar jobs em `aguardando_aprovacao` e preparar manualmente jobs `pendentes`. `Executar proxima etapa` roda `run_one()` de verdade — nunca marca uma producao como concluída sem executar o pipeline real.
+
+A interface é escura, cinematica e medieval (carvao, ouro envelhecido e bronze), responsiva, com icones SVG inline e fontes do sistema, sem assets externos. Está integrada ao `INICIAR.bat` (opcao 7). Os endpoints REST em `/api/*` ficam disponíveis para integracao futura.
+
 **Importante:** esta é uma fundação funcional e testada localmente, não um editor de vídeo completo nem uma correção comprovada do Hermes instalado na sua máquina.
