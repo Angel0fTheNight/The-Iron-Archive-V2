@@ -160,5 +160,57 @@ class TestHermesIntegration(unittest.TestCase):
         self.assertEqual(st['status'], 'done')
 
 
+    def test_execute_nao_inclui_placeholder_antigo_no_contexto(self):
+        with patch.object(core, 'settings', return_value=self._hermes_settings()):
+            core.create_episode('Episodio Contexto', 'Objetivo de teste')
+            slug = 'episodio-contexto'
+            with core.connect() as db:
+                db.execute("UPDATE jobs SET status='done', error=NULL WHERE id=1")
+                db.commit()
+            out_dir = Path(self.tmp.name) / 'projects' / slug / 'outputs'
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / '0001_scout.md').write_text('# SCOUT — tarefa preparada\n\nplaceholder antigo rejeitado.', encoding='utf-8')
+            self._write_taskfile(slug, 1)
+            with patch('subprocess.run', return_value=_proc(returncode=0, stdout='saida valida do hermes', stderr='')):
+                res = core.execute(core.get_job(1))
+            task = (out_dir / 'task_0001.txt').read_text(encoding='utf-8')
+            self.assertNotIn('tarefa preparada', task)
+            self.assertNotIn('placeholder antigo', task)
+            self.assertIn('RESULTADOS ANTERIORES', task)
+            self.assertIn('(nenhum)', task)
+
+    def test_execute_inclui_resultado_legitimo_do_predecessor(self):
+        with patch.object(core, 'settings', return_value=self._hermes_settings()):
+            core.create_episode('Episodio Legitimo', 'Objetivo de teste')
+            slug = 'episodio-legitimo'
+            valido = ('## Evidências\nhttps://exemplo.com/fonte\n## Plano\nplano\n## Pendências\npendente\n## Próxima ação\nacao\n' + 'x' * 300)
+            with core.connect() as db:
+                db.execute("UPDATE jobs SET status='done', error=NULL WHERE id=1")
+                db.commit()
+            out_dir = Path(self.tmp.name) / 'projects' / slug / 'outputs'
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / '0001_scout.md').write_text(valido, encoding='utf-8')
+            job2 = core.get_job(2)
+            self._write_taskfile(slug, 2)
+            with patch('subprocess.run', return_value=_proc(returncode=0, stdout='saida maester', stderr='')):
+                res = core.execute(job2)
+            task = (out_dir / 'task_0002.txt').read_text(encoding='utf-8')
+            self.assertIn('Evidências', task)
+            self.assertIn('https://exemplo.com/fonte', task)
+
+    def test_run_one_stdout_placeholder_marca_failed_sem_done(self):
+        with patch.object(core, 'settings', return_value=self._hermes_settings()):
+            core.create_episode('Episodio Placeholder', 'Objetivo de teste')
+            slug = 'episodio-placeholder'
+            self._write_taskfile(slug, 1)
+            placeholder_saida = '# SCOUT — tarefa preparada\n\n' + 'nenhum fato de lore gerado. ' * 20
+            with patch('subprocess.run', return_value=_proc(returncode=0, stdout=placeholder_saida, stderr='')):
+                res = core.run_one()
+            self.assertIn('error', res)
+            self.assertIn('placeholder', res['error'].lower())
+            st = self._status(1)
+            self.assertEqual(st['status'], 'failed')
+            self.assertNotEqual(st['status'], 'done')
+
 if __name__ == '__main__':
     unittest.main()

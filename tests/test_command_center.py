@@ -207,5 +207,20 @@ class TestCommandCenter(unittest.TestCase):
         self.assertIn('Evidências', body)
 
 
+    def test_output_meta_marca_placeholder_como_provisorio(self):
+        code, _payload = _req('GET', '/api/jobs', self.port)
+        jobs = _payload["jobs"]
+        scout_id = next(j['id'] for j in jobs if j['role'] == 'scout')
+        path = core.output_path(core.get_job(scout_id))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('# SCOUT — tarefa preparada\n\nplaceholder antigo.', encoding='utf-8')
+        with core.connect() as db:
+            db.execute("UPDATE jobs SET status='done', error=NULL WHERE id=?", (scout_id,))
+            db.commit()
+        code, body = _req('GET', f'/api/jobs/{scout_id}', self.port)
+        self.assertEqual(code, 200)
+        self.assertTrue(body['output_meta']['available'])
+        self.assertTrue(body['output_meta']['placeholder'])
+
 if __name__ == '__main__':
     unittest.main()

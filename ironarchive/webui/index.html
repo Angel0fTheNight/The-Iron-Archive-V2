@@ -44,6 +44,7 @@
   button.retry{background:#2a3b2a; border-color:#4a6b4a; color:#b8d4b8;}
   button.retry:hover{background:#3a5b3a; border-color:#6a8b6a;}
   button:disabled{opacity:.55; cursor:not-allowed;}
+  .error{display:none;padding:12px 16px;border-radius:8px;border:1px solid #5a3333;background:#2d1c1c;color:#e8c6c6;margin:12px 0;font-size:13px;}
   table{width:100%; border-collapse:collapse; font-size:13px;}
   th{text-align:left; color:var(--muted); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--border); font-size:11.5px; text-transform:uppercase; letter-spacing:.6px;}
   td{padding:9px 10px; border-bottom:1px solid #1f2228; vertical-align:middle;}
@@ -95,6 +96,7 @@
   <a href="#logs">Logs e eventos</a>
   <a href="#doctor">Diagnóstico</a>
 </nav>
+<div id="apiError" class="error" style="display:none;"></div>
 <main>
   <section id="episodes" class="card">
     <h2>Episódios</h2>
@@ -177,56 +179,75 @@ function badgeClass(s){return 'st-'+s;}
 function fmtDate(iso){if(!iso) return '—'; const d=new Date(iso); return d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 
 async function loadEpisodes(){
-  const {episodes}=await api('/api/episodes');
-  const list=$('episodesList'); const sel=$('selEpisode');
-  list.innerHTML=''; sel.innerHTML='<option value="">Todos os episódios</option>';
-  if(!episodes.length){list.innerHTML='<div class="empty">Nenhum episódio ainda. Crie com: python main.py new --titulo ...</div>';}
-  for(const ep of episodes){
-    const item=document.createElement('div');
-    item.className='row'; item.style.border='1px solid var(--border)'; item.style.borderRadius='8px'; item.style.padding='10px 12px'; item.style.cursor='pointer';
-    item.innerHTML=`<div style="flex:1"><div style="font-weight:700;color:var(--gold);font-size:13px;">${esc(ep.title)}</div><div class="muted" style="font-size:12px;">${esc(ep.slug)} · ${esc(ep.goal.slice(0,90))}${ep.goal.length>90?'…':''}</div><div class="muted" style="font-size:11.5px;">Criado ${fmtDate(ep.created_at)}</div></div><div class="muted" style="font-size:11px;">#${ep.id}</div>`;
-    item.onclick=()=>{sel.value=ep.id; loadQueue();};
-    list.appendChild(item);
-    const o=document.createElement('option'); o.value=ep.id; o.textContent=esc(ep.title)+' (#'+ep.id+')'; sel.appendChild(o);
+  try{
+    const {episodes}=await api('/api/episodes');
+    const list=$('episodesList'); const sel=$('selEpisode');
+    list.innerHTML=''; sel.innerHTML='<option value="">Todos os episódios</option>';
+    if(!episodes.length){list.innerHTML='<div class="empty">Nenhum episódio ainda. Crie com: python main.py new --titulo ...</div>';}
+    for(const ep of episodes){
+      const item=document.createElement('div');
+      item.className='row'; item.style.border='1px solid var(--border)'; item.style.borderRadius='8px'; item.style.padding='10px 12px'; item.style.cursor='pointer';
+      const goal = ep.goal || '';
+      item.innerHTML=`<div style="flex:1"><div style="font-weight:700;color:var(--gold);font-size:13px;">${esc(ep.title)}</div><div class="muted" style="font-size:12px;">${esc(ep.slug)} · ${esc(goal.slice(0,90))}${goal.length>90?'…':''}</div><div class="muted" style="font-size:11.5px;">Criado ${fmtDate(ep.created_at)}</div></div><div class="muted" style="font-size:11px;">#${ep.id}</div>`;
+      item.onclick=()=>{sel.value=ep.id; loadQueue();};
+      list.appendChild(item);
+      const o=document.createElement('option'); o.value=ep.id; o.textContent=esc(ep.title)+' (#'+ep.id+')'; sel.appendChild(o);
+    }
+    $('apiError').style.display='none';
+  }catch(e){
+    const el=$('apiError'); el.textContent='Falha ao carregar episódios: '+esc(e.message); el.style.display='block';
+    throw e;
   }
 }
 
 async function loadQueue(){
-  const params = new URLSearchParams(); const ep=$('selEpisode').value; if(ep) params.set('episode',ep);
-  const {jobs}=await api('/api/jobs?'+params.toString());
-  const body=$('queueBody'); body.innerHTML='';
-  const ordered = [...jobs].sort((a,b)=>ROLE_ORDER.indexOf(a.role)-ROLE_ORDER.indexOf(b.role)||a.id-b.id);
-  if(!ordered.length){body.innerHTML='<tr><td colspan="7" class="empty">Nenhum job neste episódio.</td></tr>'; return;}
-  for(const j of ordered){
-    const tr=document.createElement('tr');
-    const canApprove = j.status==='waiting_approval';
-    const canPrepare = j.status==='pending';
-    const canRetry = j.status==='failed';
-    tr.innerHTML=`
-      <td class="muted">#${j.id}</td>
-      <td><span class="role">${esc(ROLE_LABEL[j.role]||j.role)}</span></td>
-      <td class="muted">${esc(j.kind||'—')}</td>
-      <td><span class="badge ${badgeClass(j.status)}">${esc(STATUS_LABEL[j.status]||j.status)}</span></td>
-      <td class="muted">${j.attempts}</td>
-      <td class="muted">${fmtDate(j.updated_at||j.created_at)}</td>
-      <td><div class="actions">
-        <button onclick="act(${j.id},'approve')" ${!canApprove?'disabled':''}>Aprovar</button>
-        <button onclick="act(${j.id},'reject')" ${!canApprove?'disabled':''}>Rejeitar</button>
-        <button onclick="act(${j.id},'prepare')" ${!canPrepare?'disabled':''}>Preparar</button>
-        <button onclick="retry(${j.id})" ${!canRetry?'disabled':''} class="retry">Tentar novamente</button>
-      </div></td>`;
-    if(j.id===$('detailJobId')?.value) tr.style.background='#24272e';
-    tr.onclick=()=>{ openDetail(j.id); };
-    body.appendChild(tr);
+  try{
+    const params = new URLSearchParams(); const ep=$('selEpisode').value; if(ep) params.set('episode',ep);
+    const {jobs}=await api('/api/jobs?'+params.toString());
+    const body=$('queueBody'); body.innerHTML='';
+    const ordered = [...jobs].sort((a,b)=>ROLE_ORDER.indexOf(a.role)-ROLE_ORDER.indexOf(b.role)||a.id-b.id);
+    if(!ordered.length){body.innerHTML='<tr><td colspan="7" class="empty">Nenhum job neste episódio.</td></tr>'; return;}
+    for(const j of ordered){
+      const tr=document.createElement('tr');
+      const canApprove = j.status==='waiting_approval';
+      const canPrepare = j.status==='pending';
+      const canRetry = j.status==='failed';
+      tr.innerHTML=`
+        <td class="muted">#${j.id}</td>
+        <td><span class="role">${esc(ROLE_LABEL[j.role]||j.role)}</span></td>
+        <td class="muted">${esc(j.kind||'—')}</td>
+        <td><span class="badge ${badgeClass(j.status)}">${esc(STATUS_LABEL[j.status]||j.status)}</span></td>
+        <td class="muted">${j.attempts}</td>
+        <td class="muted">${fmtDate(j.updated_at||j.created_at)}</td>
+        <td><div class="actions">
+          <button onclick="act(${j.id},'approve')" ${!canApprove?'disabled':''}>Aprovar</button>
+          <button onclick="act(${j.id},'reject')" ${!canApprove?'disabled':''}>Rejeitar</button>
+          <button onclick="act(${j.id},'prepare')" ${!canPrepare?'disabled':''}>Preparar</button>
+          <button onclick="retry(${j.id})" ${!canRetry?'disabled':''} class="retry">Tentar novamente</button>
+        </div></td>`;
+      if(j.id===$('detailJobId')?.value) tr.style.background='#24272e';
+      tr.onclick=()=>{ openDetail(j.id); };
+      body.appendChild(tr);
+    }
+    $('apiError').style.display='none';
+  }catch(e){
+    const el=$('apiError'); el.textContent='Falha ao carregar fila: '+esc(e.message); el.style.display='block';
+    throw e;
   }
 }
 
 async function loadLogs(){
-  const {events}=await api('/api/logs?limit=80');
-  const body=$('logsBody'); body.innerHTML='';
-  if(!events.length){body.innerHTML='<tr><td colspan="4" class="empty">Sem eventos ainda.</td></tr>'; return;}
-  for(const e of events){
-    body.innerHTML+=`<tr><td class="muted">${fmtDate(e.at)}</td><td class="muted">#${e.job_id}</td><td class="muted">${esc(e.role||'—')}</td><td class="event">${esc(e.event)}</td></tr>`;
+  try{
+    const {events}=await api('/api/logs?limit=80');
+    const body=$('logsBody'); body.innerHTML='';
+    if(!events.length){body.innerHTML='<tr><td colspan="4" class="empty">Sem eventos ainda.</td></tr>'; return;}
+    for(const e of events){
+      body.innerHTML+=`<tr><td class="muted">${fmtDate(e.at)}</td><td class="muted">#${e.job_id}</td><td class="muted">${esc(e.role||'—')}</td><td class="event">${esc(e.event)}</td></tr>`;
+    }
+    $('apiError').style.display='none';
+  }catch(e){
+    const el=$('apiError'); el.textContent='Falha ao carregar logs: '+esc(e.message); el.style.display='block';
+    throw e;
   }
 }
 
@@ -254,7 +275,7 @@ let detailJobId=null;
 async function openDetail(id){
   detailJobId=id; $('detailJobId')||(document.body.insertAdjacentHTML('beforeend','<input id="detailJobId" type="hidden">'));
   $('detailJobId').value=id;
-  const {job,events,output_available}=await api('/api/jobs/'+id);
+  const {job,events,output_available,output_meta}=await api('/api/jobs/'+id);
   $('detailMeta').innerHTML=`
     <div style="display:flex;gap:16;flex-wrap:wrap;margin-bottom:10px;">
       <div><div class="muted" style="font-size:11px;">Episódio</div><div style="font-weight:700;color:var(--gold);">${esc(job.title)}</div></div>
@@ -272,9 +293,12 @@ async function openDetail(id){
     wrap.innerHTML='<div class="muted" style="font-size:11px;margin-bottom:6px;">Eventos do job</div>'+events.map(e=>`<div style="border-bottom:1px solid #1f2228;padding:6px 0;"><div class="muted" style="font-size:11px;">${fmtDate(e.at)}</div><div>${esc(e.event)}</div></div>`).join('');
     $('detailEvents').appendChild(wrap);
   }
+  const meta=output_meta||{};
+  const provisorio=meta.placeholder===true;
   if(output_available){
     const txt=await api('/api/jobs/'+id+'/output',{headers:{Accept:'text/markdown'}});
-    $('detailOutput').innerHTML='<div style="margin:10px 0 0;font-size:11px;color:var(--muted);">Resultado (arquivo de saída)</div><pre class="out">'+renderMarkdown(esc(txt))+'</pre>';
+    const rotulo = provisorio ? 'Resultado (arquivo de saída — BRIEFING PROVISÓRIO, não validado)' : 'Resultado (arquivo de saída)';
+    $('detailOutput').innerHTML='<div style="margin:10px 0 0;font-size:11px;color:var(--muted);">'+rotulo+'</div>'+(provisorio?'<div style="font-size:11px;color:#f4a261;margin-bottom:6px;"><b>Aviso:</b> este arquivo declara ser um briefing/placeholder e não foi validado como resultado concluído.</div>':'')+'<pre class="out">'+renderMarkdown(esc(txt))+'</pre>';
   } else {
     $('detailOutput').innerHTML='<div class="empty">Sem arquivo de saída para este job ainda.</div>';
   }
@@ -333,9 +357,18 @@ $('btnReject').onclick=()=>detailJobId&&act(detailJobId,'reject');
 $('btnPrepare').onclick=()=>detailJobId&&act(detailJobId,'prepare');
 
 (async ()=>{
-  await loadEpisodes(); await loadQueue(); await loadLogs(); await loadDoctor();
-  setTimeout(()=>{loadQueue(); loadLogs();}, 20000);
+  try{
+    await loadEpisodes(); await loadQueue(); await loadLogs(); await loadDoctor();
+    setTimeout(()=>{loadQueue(); loadLogs();}, 20000);
+  }catch(e){
+    const el=$('apiError'); el.textContent='Erro ao inicializar o Command Center: '+esc(e.message); el.style.display='block';
+    console.error(e);
+  }
 })();
+window.addEventListener('unhandledrejection',(ev)=>{
+  const el=$('apiError'); el.textContent='Erro não tratado: '+esc(ev.reason&&ev.reason.message?ev.reason.message:String(ev.reason)); el.style.display='block';
+  console.error('unhandledrejection', ev.reason);
+});
 </script>
 </body>
 </html>

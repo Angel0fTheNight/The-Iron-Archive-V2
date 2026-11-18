@@ -78,7 +78,7 @@ def read_output(job_id):
 
 def episodes():
     with connect() as db:
-        return [dict(x) for x in db.execute('SELECT id,slug,title,created_at FROM episodes ORDER BY id')]
+        return [dict(x) for x in db.execute('SELECT id,slug,title,goal,created_at FROM episodes ORDER BY id')]
 
 def change_approval(job_id,approve):
  with connect() as db:
@@ -148,14 +148,53 @@ def run_one():
    db.commit()
   return {'id':job['id'],'role':job['role'],'error':str(e)}
 
+def _saida_valida_para_contexto(db, job_id, slug, path):
+    """Retorna True somente se o output do job estiver realmente validado.
+
+    Critérios em camadas (não apenas palavras-chave): o job existe e está em
+    'done', não há erro de placeholder registrado e o arquivo não declara ser
+    um briefing placeholder. Jobs falhados, rejeitados, aguardando integração
+    ou preparados manualmente não entram no contexto do agente.
+    """
+    row=db.execute('SELECT status,error FROM jobs WHERE id=?',(job_id,)).fetchone()
+    if not row or row['status']!='done':
+        return False
+    if row['error'] and 'placeholder' in str(row['error']).lower():
+        return False
+    if not path.exists():
+        return False
+    texto=path.read_text(encoding='utf-8')
+    if 'tarefa preparada' in texto.lower() or 'nenhum fato de lore' in texto.lower():
+        return False
+    return True
+
+def output_meta(job_id):
+    """Metadados do arquivo de saída para a interface (não modifica nada)."""
+    job=get_job(job_id)
+    if not job:
+        return {'available':False,'placeholder':False,'status':None}
+    f=output_path(job)
+    if not f.exists():
+        return {'available':False,'placeholder':False,'status':job['status']}
+    texto=f.read_text(encoding='utf-8')
+    placeholder=('tarefa preparada' in texto.lower() or 'nenhum fato de lore' in texto.lower())
+    return {'available':True,'placeholder':placeholder,'status':job['status']}
+
 def execute(job):
  prompt=(BASE/'agents'/f"{job['role']}.md").read_text(encoding='utf-8')
  previous=episode_dir(job['slug'])/'outputs'
  prior=[]
  if previous.exists():
-  for f in sorted(previous.glob('*.md')):
-   prior.append(f'### {f.name}\n'+f.read_text(encoding='utf-8')[:8000])
- task=f"EPISÓDIO: {job['title']}\nOBJETIVO: {job['goal']}\n\nINSTRUÇÕES:\n{prompt}\n\nRESULTADOS ANTERIORES:\n"+('\n'.join(prior) or '(nenhum)')
+  with connect() as db:
+   for f in sorted(previous.glob('*.md')):
+    try:
+     prior_job_id=int(f.name.split('_',1)[0])
+    except ValueError:
+     continue
+    if not _saida_valida_para_contexto(db, prior_job_id, job['slug'], f):
+     continue
+    prior.append(f'### {f.name}\n'+f.read_text(encoding='utf-8')[:8000])
+ task=f"EPISÓDIO: {job['title']}\nOBJETIVO: {job['goal']}\n\nINSTRUÇÕES:\n{prompt}\n\nRESULTADOS ANTERIORES:\n"+(chr(10).join(prior) or '(nenhum)')
  cfg=settings();hc=cfg.get('hermes',{})
  if hc.get('enabled') and cfg.get('execution_mode')=='hermes':
   # Deliberately no invented CLI flags; the operator must supply a tested argument template.

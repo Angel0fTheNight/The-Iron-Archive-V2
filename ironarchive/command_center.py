@@ -122,7 +122,8 @@ class CommandHandler(BaseHTTPRequestHandler):
                     "job": job,
                     "events": core.get_events(job_id),
                     "output_available": bool(core.read_output(job_id)),
-                })
+                    "output_meta": core.output_meta(job_id),
+                }),
 
             elif segments[:2] == ["api", "jobs"] and len(segments) == 4 and segments[3] == "output":
                 job_id = self._job_id(segments)
