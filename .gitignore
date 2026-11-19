@@ -45,3 +45,23 @@ backup_*/
 projects/
 # Configuracoes privadas
 config/settings.json
+
+# Modelos e ambiente de IA
+AIModels/
+
+# Dependencias Node.js
+node_modules/
+dist/
+.vite/
+
+# Ambientes virtuais Python
+.venv/
+venv/
+.env/
+
+# Cache e temporarios
+.cache/
+*.part
+
+# Backup do gitignore
+.gitignore.pre-github-backup
